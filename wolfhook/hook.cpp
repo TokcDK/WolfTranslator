@@ -1,20 +1,3 @@
-//////////////////////////////////////////////////////////////////////////////
-//
-//  Detours Test Program
-//
-//  Microsoft Research Detours Package
-//
-//  Copyright (c) Microsoft Corporation.  All rights reserved.
-//
-//  This is a test program to test the DetourAllocateRegionWithinJumpBounds
-//  API, that dynamically allocates an executable region adjacent to a given
-//  address so that we can use the region as a detour function.
-//
-//  This test program detours the function `target_function`.  Instead of
-//  simply specifying a code segment as a detour function, we specify a
-//  dynamically-allocated region into which we copy the code, altering the
-//  return value, from the assembly function `CodeTemplate` as a template.
-//
 #define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
@@ -580,4 +563,3 @@ BOOL WINAPI DllMain(
 extern "C" __declspec(dllexport)VOID NullExport(VOID)
 {
 }
-
