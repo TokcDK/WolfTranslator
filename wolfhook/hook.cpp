@@ -39,6 +39,10 @@
 #include "filelogger.h"
 #include "pool.h"
 #include "hexdump.h"
+#include <capstone/capstone.h>
+
+#pragma comment( lib, "gdi32.lib" )
+
 
 std::map<std::string, std::string> translated_strs;
 std::set< std::string> complete_translated_strs;
@@ -68,6 +72,83 @@ void Log(const char* format, ...) {
 	*fileLogger << linebuf;
 }
 
+// Disable inline functoin optimization
+// otherwise it might not work
+// seperated from transverse_stack to fight stack check
+// that corrupts ebp
+int get_ebp() {
+	int stack_base;
+	__asm {
+		mov stack_base, ebp
+	}
+	return stack_base;
+}
+
+
+constexpr int PROGRAM_SIZE = 0x62C000;
+
+std::vector<std::string> traverse_stack(int limit) {
+	auto stack_base = get_ebp();
+	Log("HIHI %d\n", stack_base);
+
+	csh handle;
+	cs_insn *insn;
+	std::vector<std::string> out;
+	auto error = cs_open(CS_ARCH_X86, CS_MODE_32, &handle);
+	if (error != CS_ERR_OK) {
+		Log("FAILLL %u\n",error);
+
+		return  std::vector<std::string>();
+	}
+	CaptureStackBackTrace();
+	auto base = (uint64_t)GetModuleHandle(NULL);
+	for (int i = 0; i < limit; ++i) {
+		auto return_addr = *(int*)(stack_base + 4);
+		if (base <= return_addr && return_addr <= base + PROGRAM_SIZE) {
+		for (int j = 5; j <= 15; ++j) {
+			auto addr = return_addr - j;
+			// filter out kernel addresses
+			// very naive check
+			auto op = *(uint8_t*)addr;
+			if (op == 0xFF || op == 0xE8 || op == 0x9A) {
+				auto count = cs_disasm(handle, (const uint8_t*)(addr), 15, addr, 1, &insn);
+				if (count > 0) {
+					if (strcmp(insn->mnemonic, "call") == 0) {
+						Log("%s\n", insn->op_str);
+						break;
+					}
+				}
+			}	
+		}
+		
+		stack_base = *(int*)stack_base;
+		if (!stack_base) break;
+	}
+
+		
+
+	cs_close(&handle);
+
+	return std::vector<std::string>();
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 bool DetourTransaction(std::function<bool()> callback) {
 	LONG status = DetourTransactionBegin();
 	if (status != NO_ERROR) {
@@ -93,42 +174,7 @@ bool DetourTransaction(std::function<bool()> callback) {
 	return status == NO_ERROR;
 }
 
-int  (__cdecl *DrawStringInternal_trampoline) (int, int, int, float, float, int, int, double, double, int, float, float, double, const wchar_t *, unsigned int, int, int, int, int, int, int, int, int, int, int, int, int, int) = nullptr;
 
-// WTF is with a
-// TODO find this by hooking gdi api calls
-// TODO use this to automaticall find DrawString function
-int __cdecl DrawStringInternal(int				DrawFlag,
-	int				xi,
-	int				yi,
-	float			xf,
-	float			yf,
-	int				PosIntFlag,
-	int				ExRateValidFlag,
-	double			ExRateX,
-	double			ExRateY,
-	int				RotateValidFlag,
-	float			RotCenterX,
-	float			RotCenterY,
-	double			RotAngle,
-	const wchar_t *	StrData,
-	int	Color,
-	int		DestMemImg,
-	int	ClipRect,
-	int				TransFlag,
-	int ManageData,
-	int	EdgeColor,
-	int				StrLen,
-	int				VerticalFlag,
-	int DrawSize,
-	int			LineCount,
-	int	CharInfos,
-	int CharInfoBufferSize,
-	int CharInfoNum,
-	int a)
-{
-	return DrawStringInternal_trampoline(DrawFlag, xi, yi, xf, yf, PosIntFlag, ExRateValidFlag, ExRateX, ExRateY, RotateValidFlag, RotCenterX, RotCenterY, RotAngle, StrData, Color, DestMemImg, ClipRect, TransFlag, ManageData, EdgeColor, StrLen, VerticalFlag, DrawSize, LineCount, CharInfos, CharInfoBufferSize, CharInfoNum, a);
-}
 
 std::string sjisToUtf8(const std::string& value)
 {
@@ -214,6 +260,53 @@ void create_process(LPWSTR cmd) {
 
 	CloseHandle(g_hChildStd_OUT_Wr);
 	CloseHandle(g_hChildStd_IN_Rd);
+}
+
+extern "C" {
+	DWORD(WINAPI * GetGlyphOutlineW_real)(
+		HDC            hdc,
+		UINT           uChar,
+		UINT           fuFormat,
+		LPGLYPHMETRICS lpgm,
+		DWORD          cjBuffer,
+		LPVOID         pvBuffer,
+		const MAT2     *lpmat2
+		) = GetGlyphOutlineW;
+}
+
+BOOL(WINAPI * TextOutW_trampoline)(
+	HDC     hdc,
+	int     x,
+	int     y,
+	LPCWSTR lpString,
+	int     c
+);
+
+BOOL WINAPI TextOutW_hook(
+	HDC     hdc,
+	int     x,
+	int     y,
+	LPCWSTR lpString,
+	int     c
+) {
+	return TextOutW_trampoline(hdc, x, y, lpString, c);
+};
+
+
+DWORD WINAPI GetGlyphOutlineW_hook(
+	HDC            hdc,
+	UINT           uChar,
+	UINT           fuFormat,
+	LPGLYPHMETRICS lpgm,
+	DWORD          cjBuffer,
+	LPVOID         pvBuffer,
+	const MAT2     *lpmat2
+) {
+	if (translation_thread) {
+		auto stacks = traverse_stack(3);
+	}
+	
+	return GetGlyphOutlineW_real(hdc, uChar, fuFormat, lpgm, cjBuffer, pvBuffer, lpmat2);
 }
 
 std::string translate_impl(std::string str) {
@@ -437,20 +530,16 @@ BOOL WINAPI DllMain(
 	DWORD fdwReason,
 	LPVOID lpReserved)
 {
-
+	void *GetGlyphOutlineW_target = (void*)GetGlyphOutlineW_real;
+	void *TextOutW_target = (void*)TextOutW;
 	switch (fdwReason)
 	{
 	case DLL_PROCESS_ATTACH:
 		fileLogger = new FileLogger("1.0", "log.txt");
 		Log("Attaching");
 		DetourTransaction([&]() {
-			void *target = nullptr,
-				*detour = nullptr;
-			auto status = DetourAttachEx(&DrawStringInternal_target,
-				DrawStringInternal,
-				reinterpret_cast<PDETOUR_TRAMPOLINE*>(&DrawStringInternal_trampoline),
-				&target,
-				&detour);
+			auto status = DetourAttach(&(PVOID&)GetGlyphOutlineW_real,
+				GetGlyphOutlineW_hook);
 			if (status != NO_ERROR) {
 				Log("DetourAttachEx failed - %08x\n", status);
 				return false;
@@ -491,3 +580,4 @@ BOOL WINAPI DllMain(
 extern "C" __declspec(dllexport)VOID NullExport(VOID)
 {
 }
+

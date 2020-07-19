@@ -23,6 +23,7 @@ std::string exec(const char* cmd) {
 	}
 	return result;
 }
+#define CODE "\x8d\x4c\x32\x08\x01\xd8\x81\xc6\x34\x12\x00\x00"
 
 INT __stdcall WinMain(HINSTANCE _Module, HINSTANCE _Previous, LPSTR _CommandLine, INT _Show)
 {
@@ -54,11 +55,10 @@ INT __stdcall WinMain(HINSTANCE _Module, HINSTANCE _Previous, LPSTR _CommandLine
 	HRESULT hr = S_OK;
 	HRESULT comInit = E_FAIL;
 	INetFwProfile* fwProfile = NULL;
-	
 
 	struct stat info;
 
-	DetourCreateProcessWithDllW(L"Game.exe", NULL, NULL, NULL, TRUE, CREATE_DEFAULT_ERROR_MODE, NULL, _Directory.c_str(), &_StartupInfo, &_Information, "katowolf.dll", NULL);
+	DetourCreateProcessWithDllW(L"Game.exe", NULL, NULL, NULL, TRUE, CREATE_DEFAULT_ERROR_MODE, NULL, _Directory.c_str(), &_StartupInfo, &_Information, "wolfhook.dll", NULL);
 
 	return EXIT_SUCCESS;
 }
