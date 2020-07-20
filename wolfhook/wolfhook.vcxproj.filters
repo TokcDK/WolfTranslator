@@ -27,15 +27,9 @@
     <ClInclude Include="hexdump.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="label.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="hook.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="label.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
