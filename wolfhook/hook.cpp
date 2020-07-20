@@ -367,10 +367,10 @@ void request_translation(std::string str) {
 	translation_queue.push_front(str);
 }
 
+void(__fastcall *DrawString_trampoline1) (int thi, void* notUsed, char a2, double a3, double a4);
 void(__fastcall *DrawString_trampoline) (int thi, void* notUsed, char a2, double a3, double a4, double a5);
 
-void __fastcall DrawString(int thi, void* notUsed, char a2, double a3, double a4, double a5)
-{
+void DrawString_impl(int thi) {
 	if (!pool || !translation_thread) {
 		wchar_t cmd[] = L".\\translator\\translator.exe";
 		create_process(cmd);
@@ -382,12 +382,23 @@ void __fastcall DrawString(int thi, void* notUsed, char a2, double a3, double a4
 		auto lock = std::unique_lock<std::mutex>(thread_mutex);
 		if (complete_translated_strs.find(x) == complete_translated_strs.end() && translated_strs.find(x) == translated_strs.end()) {
 			request_translation(x);
-		} else if (translated_strs.find(x) != translated_strs.end()) {
+		}
+		else if (translated_strs.find(x) != translated_strs.end()) {
 			copy_cstr(thi, thi, translated_strs[x].c_str());
 		}
 	}
+}
 
-	DrawString_trampoline(thi,notUsed, a2, a3, a4, a5);
+void __fastcall DrawString1(int thi, void* notUsed, char a2, double a3, double a4)
+{
+	DrawString_impl(thi);
+	DrawString_trampoline1(thi,notUsed, a2, a3, a4);
+}
+
+void __fastcall DrawString(int thi, void* notUsed, char a2, double a3, double a4, double a5)
+{
+	DrawString_impl(thi);
+	DrawString_trampoline(thi, notUsed, a2, a3, a4, a5);
 }
 
 void load_wolfpatchinfo() {
@@ -399,6 +410,12 @@ void load_wolfpatchinfo() {
 	DrawString_target = reinterpret_cast<void*>(draw_string_addr);
 	get_data = reinterpret_cast<get_cstr_func>(get_cstr_addr);
 	copy_cstr = reinterpret_cast<copy_cstr_func>(copy_buf_addr);
+}
+
+bool is_file_exist(const char *fileName)
+{
+	std::ifstream infile(fileName);
+	return infile.good();
 }
 
 BOOL WINAPI DllMain(
@@ -415,15 +432,22 @@ BOOL WINAPI DllMain(
 		DetourTransaction([&]() {
 			void *target = nullptr,
 				*detour = nullptr;
-			auto status = DetourAttachEx(&DrawString_target,
-				DrawString,
-				reinterpret_cast<PDETOUR_TRAMPOLINE*>(&DrawString_trampoline),
-				&target,
-				&detour);
-			if (status != NO_ERROR) {
-				Log("DetourAttachEx failed - %08x\n", status);
-				return false;
+			auto is_ver1 = is_file_exist("wolfdrawstring1");
+			if (is_ver1) {
+				DetourAttachEx(&DrawString_target,
+					DrawString1,
+					reinterpret_cast<PDETOUR_TRAMPOLINE*>(&DrawString_trampoline1),
+					&target,
+					&detour);
 			}
+			else {
+				DetourAttachEx(&DrawString_target,
+					DrawString,
+					reinterpret_cast<PDETOUR_TRAMPOLINE*>(&DrawString_trampoline),
+					&target,
+					&detour);
+			}
+
 
 			return true;
 		});

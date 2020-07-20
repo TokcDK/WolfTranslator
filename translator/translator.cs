@@ -117,7 +117,10 @@ namespace translator
 
         static int Main(string[] args)
         {
-            Load();
+            if (File.Exists("translation.txt"))
+            {
+                Load();
+            }
             listener = new HttpListener();
             listener.Prefixes.Add(url);
             listener.Start();
