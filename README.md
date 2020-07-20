@@ -2,6 +2,10 @@
 
 Translate the games made with wolf rpg editor automatically to Korean.
 
+## 소개
+
+울프툴로 만들어진 게임을 구글 번역기를 사용해 실시간으로 번역합니다. 2.1버전부터 최신버전(2.24)을 모두 지원합니다. 
+
 ## 사용법
 
 1. 울프툴 에디터를 사용해 게임 언어를 한글로 바꿔줍니다.
